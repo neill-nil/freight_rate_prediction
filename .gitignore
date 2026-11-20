@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 scorer_results/
+PROJECT_GUIDE.md

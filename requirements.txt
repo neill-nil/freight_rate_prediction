@@ -3,3 +3,4 @@ numpy>=1.26,<3
 pandas>=2.0,<3
 # --- added for the solution (above: scorer pins, kept unchanged) ---
 scipy>=1.11,<2
+scikit-learn>=1.5,<2
