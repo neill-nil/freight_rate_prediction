@@ -29,7 +29,7 @@ python -m pip install -r requirements.txt
 ## EDA
 
 ```bash
-python eda/run_all.py          # or run a single step, e.g. python eda/05_temporal.py
+python eda/run_all.py          # all steps (~80 s), or a single one, e.g. python eda/05_temporal.py
 ```
 
 | Step | Question it answers |
@@ -41,5 +41,10 @@ python eda/run_all.py          # or run a single step, e.g. python eda/05_tempor
 | `05_temporal.py` | Which effects depend on the date, and are they carried by a column or only by the calendar? |
 | `06_drift_and_leakage.py` | Will the patterns carry over to Nov–Dec? Is any feature too good to be true? |
 | `07_december_inputs.py` | What will the model see for the December chart, and what is missing? |
+| `08_trap_proof.py` | Does `quote_signal` help a model on future months? (with/without, random vs time-forward, shuffle counterfactual) |
+| `09_structure.py` | Is price a product of independent effects? Ladder, interactions, functional shapes, noise |
+| `10_time_shape.py` | Exact shape of drift and quarter-end ramp; out-of-sample check; expected December curve |
+| `11_unseen_cities.py` | Can neighbouring cities price a city never seen in training? |
+| `12_volume_effects.py` | Do load counts (day, city, equipment, lane, imbalance) affect price? |
 
 Reports land in `reports/eda/` (index: `reports/eda/README.md`).
