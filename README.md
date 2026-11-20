@@ -2,7 +2,7 @@
 
 Predict `posted_rate` for truckload freight. Assessment brief: [docs/Freight_Rate_ML_Assessment.pdf](docs/Freight_Rate_ML_Assessment.pdf) (original instructions: [docs/assignment_README.md](docs/assignment_README.md)).
 
-> Work in progress. Current stage: exploratory data analysis.
+> Work in progress. Current stage: modelling (EDA complete).
 
 ## Layout
 
@@ -15,6 +15,9 @@ data/                     input files (paths match the brief and score.py)
 docs/                     assessment brief
 eda/                      EDA scripts, one per question (run in order)
 reports/eda/              generated EDA reports (markdown) and figures
+src/freight/              solution package: cleaning (data.py), features, models, time-aware evaluation
+modeling/                 modelling experiments (run in order)
+reports/model/            generated modelling reports and figures
 score.py                  provided scorer: validates outputs, draws the December chart
 requirements.txt          scorer pins + solution dependencies
 ```
@@ -48,3 +51,15 @@ python eda/run_all.py          # all steps (~80 s), or a single one, e.g. python
 | `12_volume_effects.py` | Do load counts (day, city, equipment, lane, imbalance) affect price? |
 
 Reports land in `reports/eda/` (index: `reports/eda/README.md`).
+
+## Modelling
+
+```bash
+python modeling/01_structural.py   # baselines + structural model ladder and hyperparameter sweeps (~25 s)
+python modeling/02_gbm.py          # gradient-boosted trees: design choices, random-search tuning, hybrid, diagnosis (~7 min)
+python modeling/03_compare.py      # finalists, December behaviour, sanity checks, preview scorer run (~1 min)
+```
+
+All models are scored on **future months** (train up to a cut-off, test on the next two months, 4 folds) with 4 cities
+hidden from training in each fold, mirroring the real task (Nov–Dec, 12% of loads in unseen cities). Metrics: MAPE and RMSE
+(plus MAE, median APE), on test rows with genuine labels.
