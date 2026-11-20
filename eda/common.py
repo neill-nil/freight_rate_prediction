@@ -172,6 +172,115 @@ def flag_outliers(rel: pd.Series) -> pd.Series:
     return (rel > OUTLIER_HI) | (rel < OUTLIER_LO)
 
 
+def clean_inputs(df: pd.DataFrame, daily_mi: pd.Series, weight_fill: dict[str, float]) -> pd.DataFrame:
+    """Prediction-time input cleaning, as found in 03_data_quality.
+
+    * weight: sign flips → abs(); missing → equipment median of the training data (flagged)
+    * market_index: missing → same-date mean (flagged)
+    Adds weight_abs, mi, log_distance, log_weight, log_mi, weight_missing, mi_missing.
+    """
+    out = df.copy()
+    out["weight_missing"] = out["weight"].isna()
+    out["weight_abs"] = out["weight"].abs().fillna(out["equipment"].map(weight_fill))
+    out["mi_missing"] = out["market_index"].isna()
+    out["mi"] = out["market_index"].fillna(out["date"].map(daily_mi))
+    out["log_distance"] = np.log(out["distance"])
+    out["log_weight"] = np.log(out["weight_abs"])
+    out["log_mi"] = np.log(out["mi"])
+    return out
+
+
+MODEL_OUTLIER_LOG = 0.4  # |log residual| > 0.4 (≈ ×1.5 or ÷1.5) vs the structural model = corrupted label
+
+
+def clean_train(train: pd.DataFrame, val: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Train rows with corrupted labels removed and inputs cleaned. Returns (clean_train, all_train_with_flags).
+
+    Two passes: (1) rel_rate vs the lane's typical rate (03_data_quality); (2) residual vs the structural
+    model, which catches corrupted labels on thin lanes where the corrupted value *is* the lane median (09).
+    """
+    tr = add_rate_features(train)
+    rel, _ = relative_rate(tr)
+    tr = tr.join(rel)
+    tr["is_outlier_lane"] = flag_outliers(tr["rel_rate"])
+    frames = (train,) if val is None else (train, val)
+    weight_fill = train.assign(w=train["weight"].abs()).groupby("equipment")["w"].median().to_dict()
+    tr = clean_inputs(tr, daily_market_index(*frames), weight_fill)
+    cities = sorted(set(tr["pickup"]) | set(tr["delivery"]))
+    first = tr[~tr["is_outlier_lane"]]
+    beta, _ = ols(structural_matrix(first, cities, "shared")[0], np.log(first["posted_rate"].values))
+    Xall = structural_matrix(tr, cities, "shared")[0]
+    tr["structural_resid"] = np.log(tr["posted_rate"].values) - np.column_stack([np.ones(len(tr)), Xall]) @ beta
+    tr["is_outlier_model"] = tr["structural_resid"].abs() > MODEL_OUTLIER_LOG
+    tr["is_outlier"] = tr["is_outlier_lane"] | tr["is_outlier_model"]
+    return tr[~tr["is_outlier"]].copy(), tr
+
+
+WEIGHT_LO, WEIGHT_HI = 20_000.0, 40_000.0  # weight only matters inside this band (09_structure)
+
+
+def structural_matrix(
+    df: pd.DataFrame, cities: list[str], city_mode: str = "shared", form: str = "refined"
+) -> tuple[np.ndarray, list[str]]:
+    """Design matrix of the multiplicative description of price (OLS on log price).
+
+    form='log'     : log d, log w, log mi                         (first guess, step 04)
+    form='refined' : log d, (log d)², (log d)³, clip(w, 20k, 40k), mi   (shapes found in 09_structure)
+    plus Reefer and Flatbed indicators, plus city terms:
+    city_mode: 'separate' = origin and destination dummies, 'shared' = one effect per city used for
+    both ends, 'none' = no city terms. The first city is the reference level.
+    """
+    reefer = (df["equipment"] == "Reefer").values.astype(float)
+    flatbed = (df["equipment"] == "Flatbed").values.astype(float)
+    ld = df["log_distance"].values
+    if form == "log":
+        cols = [ld, df["log_weight"].values, df["log_mi"].values]
+        names = ["log_distance", "log_weight", "log_mi"]
+    else:
+        w = np.clip(df["weight_abs"].values, WEIGHT_LO, WEIGHT_HI) / 1e4
+        cols = [ld, ld**2, ld**3, w, df["mi"].values]
+        names = ["log_distance", "log_distance^2", "log_distance^3", "weight_clipped_10k", "market_index"]
+    cols += [reefer, flatbed]
+    names += ["Reefer", "Flatbed"]
+    if city_mode != "none":
+        o = pd.Categorical(df["pickup"], categories=cities)
+        d = pd.Categorical(df["delivery"], categories=cities)
+        O = np.eye(len(cities))[o.codes][:, 1:]
+        Dm = np.eye(len(cities))[d.codes][:, 1:]
+        if city_mode == "separate":
+            cols += list(O.T) + list(Dm.T)
+            names += [f"o:{c}" for c in cities[1:]] + [f"d:{c}" for c in cities[1:]]
+        else:
+            cols += list((O + Dm).T)
+            names += [f"c:{c}" for c in cities[1:]]
+    return np.column_stack(cols), names
+
+
+def fit_structural(df: pd.DataFrame, city_mode: str = "shared", cities: list[str] | None = None, form: str = "refined") -> dict:
+    """OLS fit of the multiplicative structure on clean rows. Returns coefficients, residuals and city effects."""
+    cities = cities or sorted(set(df["pickup"]) | set(df["delivery"]))
+    X, names = structural_matrix(df, cities, city_mode, form)
+    y = np.log(df["posted_rate"].values)
+    beta, fitted = ols(X, y)
+    coef = pd.Series(beta, index=["const", *names])
+    out = {"coef": coef, "resid": pd.Series(y - fitted, index=df.index), "fitted": fitted, "cities": cities,
+           "form": form, "city_mode": city_mode}
+    if city_mode == "separate":
+        o = pd.Series([0.0] + [coef[f"o:{c}"] for c in cities[1:]], index=cities)
+        d = pd.Series([0.0] + [coef[f"d:{c}"] for c in cities[1:]], index=cities)
+        out["origin"], out["destination"] = o - o.mean(), d - d.mean()
+    elif city_mode == "shared":
+        s = pd.Series([0.0] + [coef[f"c:{c}"] for c in cities[1:]], index=cities)
+        out["city"] = s - s.mean()
+    return out
+
+
+def predict_structural(fit: dict, df: pd.DataFrame) -> np.ndarray:
+    """log-price prediction from a fit_structural result (cities must be known to the fit)."""
+    X, _ = structural_matrix(df, fit["cities"], fit["city_mode"], fit["form"])
+    return np.column_stack([np.ones(len(df)), X]) @ fit["coef"].values
+
+
 def haversine_miles(lat1, lon1, lat2, lon2):
     lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
     h = np.sin((lat2 - lat1) / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
