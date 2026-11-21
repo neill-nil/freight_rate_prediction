@@ -37,7 +37,9 @@ def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
 class FoldData:
     """Pre-computes each fold's cleaned train/test frames once, so many models can be compared cheaply."""
 
-    def __init__(self, train_raw: pd.DataFrame, val_raw: pd.DataFrame, folds=FOLDS, n_hidden: int = N_HIDDEN_CITIES, seed: int = 0) -> None:
+    def __init__(self, train_raw: pd.DataFrame, val_raw: pd.DataFrame, folds=FOLDS, n_hidden: int = N_HIDDEN_CITIES, seed: int = 0,
+                 flag_fn: Callable[[pd.DataFrame], pd.Series] = flag_corrupted) -> None:
+        """flag_fn: rule that marks corrupted labels in each fold's TRAINING part (scored test rows never change)."""
         wf_all = weight_fill_values(train_raw)
         full = clean_inputs(train_raw, daily_market_index(train_raw, val_raw), wf_all)
         self.genuine = ~flag_corrupted(full)  # used ONLY to choose which test rows to score
@@ -52,7 +54,7 @@ class FoldData:
             dmi = daily_market_index(tr, te)
             wf = weight_fill_values(tr)
             trc, tec = clean_inputs(tr, dmi, wf), clean_inputs(te, dmi, wf)
-            trc = trc[~flag_corrupted(trc)]
+            trc = trc[~flag_fn(trc)]
             self.folds.append({
                 "name": name, "train": trc, "test": tec, "hidden": sorted(hidden),
                 "unseen": (tec.pickup.isin(hidden) | tec.delivery.isin(hidden)).values,

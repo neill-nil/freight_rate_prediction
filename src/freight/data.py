@@ -81,18 +81,21 @@ def lane_relative_rate(df: pd.DataFrame) -> pd.Series:
     return rpm / (lane_base * prem)
 
 
-def flag_corrupted(df: pd.DataFrame) -> pd.Series:
+def flag_corrupted(df: pd.DataFrame, lane_bounds: tuple[float, float] = (LANE_OUTLIER_LO, LANE_OUTLIER_HI),
+                   model_log: float | None = MODEL_OUTLIER_LOG) -> pd.Series:
     """Two-pass corrupted-label rule on a cleaned, labelled frame.
 
     Pass 1: price per mile far from the lane's typical value (catches almost all).
     Pass 2: far from the structural model's prediction (catches corrupted prices on thin lanes where
-            the corrupted value is itself the lane median).
+            the corrupted value is itself the lane median). model_log=None skips pass 2.
     """
     from .models import StructuralModel  # local import avoids a cycle
 
     rel = lane_relative_rate(df)
-    pass1 = (rel < LANE_OUTLIER_LO) | (rel > LANE_OUTLIER_HI)
+    pass1 = (rel < lane_bounds[0]) | (rel > lane_bounds[1])
+    if model_log is None:
+        return pass1
     m = StructuralModel(trend="continue", unseen="mean").fit(df[~pass1])
     resid = np.log(df["posted_rate"].values) - m.predict_log(df)
-    pass2 = pd.Series(np.abs(resid) > MODEL_OUTLIER_LOG, index=df.index)
+    pass2 = pd.Series(np.abs(resid) > model_log, index=df.index)
     return pass1 | pass2
