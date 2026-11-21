@@ -66,17 +66,26 @@ class FoldData:
             m = make_model().fit(f["train"])
             p = m.predict(f["test"])
             preds.append(p)
-            y = f["test"]["posted_rate"].values
-            g = f["genuine"]
-            row = {"model": label, "fold": f["name"], **metrics(y[g], p[g])}
-            row["MAPE seen cities (%)"] = metrics(y[g & ~f["unseen"]], p[g & ~f["unseen"]])["MAPE (%)"]
-            row["MAPE unseen cities (%)"] = metrics(y[g & f["unseen"]], p[g & f["unseen"]])["MAPE (%)"]
-            row["MAPE month 1 (%)"] = metrics(y[g & ~f["month2"]], p[g & ~f["month2"]])["MAPE (%)"]
-            row["MAPE month 2 (%)"] = metrics(y[g & f["month2"]], p[g & f["month2"]])["MAPE (%)"]
-            row["bias (%)"] = 100 * float(np.median(p[g] / y[g] - 1))
-            row["RMSE all rows ($)"] = metrics(y, p)["RMSE ($)"]
-            rows.append(row)
+            rows.append(score_fold(f, p, label))
         return pd.DataFrame(rows), preds
+
+    def score_predictions(self, preds: list[np.ndarray], label: str) -> pd.DataFrame:
+        """Score ready-made per-fold predictions (used for ensembles)."""
+        return pd.DataFrame([score_fold(f, p, label) for f, p in zip(self.folds, preds)])
+
+
+def score_fold(f: dict, p: np.ndarray, label: str) -> dict:
+    """All metrics for one fold's predictions (genuine test rows; seen/unseen cities; month 1/2)."""
+    y = f["test"]["posted_rate"].values
+    g = f["genuine"]
+    row = {"model": label, "fold": f["name"], **metrics(y[g], p[g])}
+    row["MAPE seen cities (%)"] = metrics(y[g & ~f["unseen"]], p[g & ~f["unseen"]])["MAPE (%)"]
+    row["MAPE unseen cities (%)"] = metrics(y[g & f["unseen"]], p[g & f["unseen"]])["MAPE (%)"]
+    row["MAPE month 1 (%)"] = metrics(y[g & ~f["month2"]], p[g & ~f["month2"]])["MAPE (%)"]
+    row["MAPE month 2 (%)"] = metrics(y[g & f["month2"]], p[g & f["month2"]])["MAPE (%)"]
+    row["bias (%)"] = 100 * float(np.median(p[g] / y[g] - 1))
+    row["RMSE all rows ($)"] = metrics(y, p)["RMSE ($)"]
+    return row
 
 
 def summarise(per_fold: pd.DataFrame) -> pd.DataFrame:
