@@ -2,7 +2,8 @@
 
 Predict `posted_rate` for truckload freight. Assessment brief: [docs/Freight_Rate_ML_Assessment.pdf](docs/Freight_Rate_ML_Assessment.pdf) (original instructions: [docs/assignment_README.md](docs/assignment_README.md)).
 
-> Work in progress. Current stage: modelling (EDA complete).
+> Final model: **structural v3**, a multiplicative price formula fitted on log price (distance curve, equipment, weight band, market index,
+> city and directed-lane effects, quarter-end ramp, damped drift). Future-month test: 1.39% MAPE / $47.7 RMSE.
 
 ## Layout
 
@@ -15,10 +16,13 @@ data/                     input files (paths match the brief and score.py)
 docs/                     assessment brief
 eda/                      EDA scripts, one per question (run in order)
 reports/eda/              generated EDA reports (markdown) and figures
-src/freight/              solution package: cleaning (data.py), features, models, time-aware evaluation, zoo.py (shared leak-free features)
+src/freight/              solution package: cleaning (data.py), features, models, time-aware evaluation, config.py (final settings), zoo.py (shared leak-free features)
 modeling/                 modelling experiments (run in order)
 reports/model/            generated modelling reports and figures
 score.py                  provided scorer: validates outputs, draws the December chart
+predict.py                final pipeline: train on Jan–Oct, write the deliverables, run the scorer
+validation_predictions.csv  final predictions for the 12,000 validation loads
+scorer_results/           candidate_december.png from score.py
 requirements.txt          scorer pins + solution dependencies
 ```
 
@@ -28,6 +32,17 @@ requirements.txt          scorer pins + solution dependencies
 python -m venv .venv && source .venv/bin/activate   # Python 3.12
 python -m pip install -r requirements.txt
 ```
+
+## Reproduce the submission
+
+```bash
+python predict.py      # ~3 s: writes validation_predictions.csv, fills data/december_chart_inputs.csv, runs score.py
+```
+
+`predict.py` cleans all files the same way, removes corrupted training prices (678), fits the final model
+(`src/freight/config.py`) on the cleaned Jan–Oct loads, predicts, and calls `score.py`, which validates both files and
+draws `scorer_results/candidate_december.png`. It only fills the `predicted_rate` column of the December file, so it
+can be re-run safely; the outputs are identical on every run.
 
 ## EDA
 
@@ -57,12 +72,13 @@ Reports land in `reports/eda/` (index: `reports/eda/README.md`).
 ```bash
 python modeling/01_structural.py   # baselines + structural model ladder and hyperparameter sweeps (~25 s)
 python modeling/02_gbm.py          # gradient-boosted trees: design choices, random-search tuning, hybrid, diagnosis (~7 min)
-python modeling/03_compare.py      # finalists, December behaviour, sanity checks, preview scorer run (~1 min)
+python modeling/03_compare.py      # finalists at that stage (v2 / hybrid on v2), December behaviour, preview scorer run (~1 min)
 python modeling/04_feature_screen.py   # feature-engineering audit: inventory, screen of untested features, lane effect (~40 s)
 python modeling/05_model_zoo.py        # 9 standard model types on the same leak-free features, each tuned (~5 min)
 python modeling/06_ensembles.py        # averaging, residual stacking, leave-one-fold-out blend (~1 min)
 python modeling/07_neural_net.py       # multi-layer perceptron: standalone and stacked on the structural model (~2 min)
 python modeling/08_loose_ends.py       # untried ideas (metric weighting, recency, joint/neighbour lane effects) + robustness checks (~1.5 min)
+python modeling/09_hybrid_check.py     # stress test of structural v3 vs v3 + residual trees on 6 rounds × 4 hidden-city draws (~1 min)
 ```
 
 All models are scored on **future months** (train up to a cut-off, test on the next two months, 4 folds) with 4 cities
