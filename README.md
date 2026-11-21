@@ -62,6 +62,7 @@ python modeling/04_feature_screen.py   # feature-engineering audit: inventory, s
 python modeling/05_model_zoo.py        # 9 standard model types on the same leak-free features, each tuned (~5 min)
 python modeling/06_ensembles.py        # averaging, residual stacking, leave-one-fold-out blend (~1 min)
 python modeling/07_neural_net.py       # multi-layer perceptron: standalone and stacked on the structural model (~2 min)
+python modeling/08_loose_ends.py       # untried ideas (metric weighting, recency, joint/neighbour lane effects) + robustness checks (~1.5 min)
 ```
 
 All models are scored on **future months** (train up to a cut-off, test on the next two months, 4 folds) with 4 cities
