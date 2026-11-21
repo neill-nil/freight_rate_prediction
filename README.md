@@ -15,7 +15,7 @@ data/                     input files (paths match the brief and score.py)
 docs/                     assessment brief
 eda/                      EDA scripts, one per question (run in order)
 reports/eda/              generated EDA reports (markdown) and figures
-src/freight/              solution package: cleaning (data.py), features, models, time-aware evaluation
+src/freight/              solution package: cleaning (data.py), features, models, time-aware evaluation, zoo.py (shared leak-free features)
 modeling/                 modelling experiments (run in order)
 reports/model/            generated modelling reports and figures
 score.py                  provided scorer: validates outputs, draws the December chart
@@ -59,6 +59,9 @@ python modeling/01_structural.py   # baselines + structural model ladder and hyp
 python modeling/02_gbm.py          # gradient-boosted trees: design choices, random-search tuning, hybrid, diagnosis (~7 min)
 python modeling/03_compare.py      # finalists, December behaviour, sanity checks, preview scorer run (~1 min)
 python modeling/04_feature_screen.py   # feature-engineering audit: inventory, screen of untested features, lane effect (~40 s)
+python modeling/05_model_zoo.py        # 9 standard model types on the same leak-free features, each tuned (~5 min)
+python modeling/06_ensembles.py        # averaging, residual stacking, leave-one-fold-out blend (~1 min)
+python modeling/07_neural_net.py       # multi-layer perceptron: standalone and stacked on the structural model (~2 min)
 ```
 
 All models are scored on **future months** (train up to a cut-off, test on the next two months, 4 folds) with 4 cities
