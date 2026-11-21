@@ -49,10 +49,11 @@ class StructuralModel:
     def __init__(self, distance_degree: int = 3, weight_bounds: tuple[float, float] | None = (20_000, 40_000),
                  use_weight: bool = True, use_market: bool = True, use_cities: bool = True, ramp_days: float = 28,
                  trend: str = "continue", unseen: str = "knn", knn_k: int = 5, coords: pd.DataFrame | None = None,
-                 ramp_by_equipment: bool = False, drift_by_equipment: bool = False) -> None:
+                 ramp_by_equipment: bool = False, drift_by_equipment: bool = False, lane_shrink: float | None = None) -> None:
         self.distance_degree, self.weight_bounds, self.use_market = distance_degree, weight_bounds, use_market
         self.use_weight = use_weight
         self.ramp_by_equipment, self.drift_by_equipment = ramp_by_equipment, drift_by_equipment
+        self.lane_shrink = lane_shrink
         self.use_cities, self.ramp_days, self.trend = use_cities, ramp_days, trend
         self.unseen, self.knn_k, self.coords = unseen, knn_k, coords
 
@@ -105,7 +106,17 @@ class StructuralModel:
         n_city = len(self.cities_) - 1 if self.use_cities else 0
         city_coef = self.coef_[len(self.coef_) - n_city:] if n_city else np.array([])
         self.city_effects_ = pd.Series(np.r_[0.0, city_coef], index=self.cities_) if self.use_cities else pd.Series(dtype=float)
+        if self.lane_shrink is not None:
+            # each directed lane's own level beyond its two cities: mean residual shrunk toward 0
+            # (sum / (n + λ)), so a lane with few loads gets only a small adjustment; unseen lanes get 0
+            resid = np.log(df["posted_rate"].values) - A @ self.coef_
+            g = pd.DataFrame({"lane": self._lane_key(df), "r": resid}).groupby("lane")["r"].agg(["sum", "count"])
+            self.lane_effects_ = g["sum"] / (g["count"] + self.lane_shrink)
         return self
+
+    @staticmethod
+    def _lane_key(df: pd.DataFrame) -> np.ndarray:
+        return (df["pickup"] + "→" + df["delivery"]).values
 
     def _time_index(self, df: pd.DataFrame) -> np.ndarray:
         t = months_since_start(df["date"])
@@ -129,6 +140,8 @@ class StructuralModel:
                         else:
                             est[city] = float(self.city_effects_.mean())
                 out = out + df[role].map(est).fillna(0.0).values
+        if self.lane_shrink is not None:
+            out = out + pd.Series(self._lane_key(df)).map(self.lane_effects_).fillna(0.0).values
         return out
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
