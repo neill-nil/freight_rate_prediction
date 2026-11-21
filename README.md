@@ -58,6 +58,7 @@ Reports land in `reports/eda/` (index: `reports/eda/README.md`).
 python modeling/01_structural.py   # baselines + structural model ladder and hyperparameter sweeps (~25 s)
 python modeling/02_gbm.py          # gradient-boosted trees: design choices, random-search tuning, hybrid, diagnosis (~7 min)
 python modeling/03_compare.py      # finalists, December behaviour, sanity checks, preview scorer run (~1 min)
+python modeling/04_feature_screen.py   # feature-engineering audit: inventory, screen of untested features, lane effect (~40 s)
 ```
 
 All models are scored on **future months** (train up to a cut-off, test on the next two months, 4 folds) with 4 cities
