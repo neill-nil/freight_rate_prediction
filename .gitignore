@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 PROJECT_GUIDE.md
+LOOM_SCRIPT.md
 outputs/

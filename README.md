@@ -23,6 +23,7 @@ score.py                  provided scorer: validates outputs, draws the December
 predict.py                final pipeline: train on Jan–Oct, write the deliverables, run the scorer
 validation_predictions.csv  final predictions for the 12,000 validation loads
 scorer_results/           candidate_december.png from score.py
+report/                   PDF report (validation & split approach, December chart) and its build script
 requirements.txt          scorer pins + solution dependencies
 ```
 
@@ -43,6 +44,12 @@ python predict.py      # ~3 s: writes validation_predictions.csv, fills data/dec
 (`src/freight/config.py`) on the cleaned Jan–Oct loads, predicts, and calls `score.py`, which validates both files and
 draws `scorer_results/candidate_december.png`. It only fills the `predicted_rate` column of the December file, so it
 can be re-run safely; the outputs are identical on every run.
+
+## Report
+
+[`report/Freight_Rate_Prediction_Report.pdf`](report/Freight_Rate_Prediction_Report.pdf): validation and data-split approach,
+data-quality fixes, model and alternatives, and the December chart. Rebuild with `python report/build_report.py`
+(after `python predict.py`).
 
 ## EDA
 
